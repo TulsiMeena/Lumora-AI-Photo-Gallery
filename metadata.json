@@ -1,0 +1,6 @@
+{
+  "name": "My Gallery AI",
+  "description": "Premium AI-powered gallery with smart albums, document scanner, secure vault, and offline intelligence by Amit Meena.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

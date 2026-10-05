@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="pdf_docs" path="pdfs/" />
+    <files-path name="scanned_docs" path="scanned_docs/" />
+    <files-path name="resized_images" path="resized/" />
+    <external-files-path name="external_pdfs" path="pdfs/" />
+    <external-files-path name="external_resized" path="Pictures/" />
+    <cache-path name="cache_pdfs" path="." />
+    <cache-path name="cache_images" path="images/" />
+    <external-path name="external_files" path="." />
+    <files-path name="app_files" path="." />
+</paths>
