@@ -80,6 +80,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -226,7 +227,7 @@ fun DocumentScannerScreen(
   // Auto initialize corners once original bitmap is loaded
   LaunchedEffect(originalBitmap) {
     originalBitmap?.let { bmp ->
-      corners = QuadCorners.defaultFromSize(bmp.width.toFloat(), bmp.height.toFloat(), 0.05f)
+      corners = QuadCorners.autoDetect(bmp)
     }
   }
 
@@ -309,7 +310,7 @@ fun DocumentScannerScreen(
               onPickImage = { photoPickerLauncher.launch("image/*") },
               onAutoDetect = {
                 originalBitmap?.let { bmp ->
-                  corners = QuadCorners.defaultFromSize(bmp.width.toFloat(), bmp.height.toFloat(), 0.06f)
+                  corners = QuadCorners.autoDetect(bmp)
                 }
               },
               onFullFrame = {
@@ -610,12 +611,12 @@ private fun CornerAdjustmentView(
         .background(Color.Black),
       contentAlignment = Alignment.Center
     ) {
-      val viewWidth = maxWidth.value
-      val viewHeight = maxHeight.value
+      val viewWidth = constraints.maxWidth.toFloat()
+      val viewHeight = constraints.maxHeight.toFloat()
       val bmpWidth = bitmap.width.toFloat()
       val bmpHeight = bitmap.height.toFloat()
 
-      // Calculate scale to fit inside container
+      // Calculate scale to fit inside container in pure screen pixels
       val scale = minOf(viewWidth / bmpWidth, viewHeight / bmpHeight)
       val offsetX = (viewWidth - bmpWidth * scale) / 2f
       val offsetY = (viewHeight - bmpHeight * scale) / 2f
@@ -712,7 +713,6 @@ private fun CornerAdjustmentView(
 
         // 2. Draw 4 Corner Circles / Pins
         val cornerPoints = listOf(pTL, pTR, pBR, pBL)
-        val labels = listOf("TL", "TR", "BR", "BL")
 
         cornerPoints.forEachIndexed { idx, point ->
           val isTarget = (activeDragIndex == idx)
@@ -735,6 +735,97 @@ private fun CornerAdjustmentView(
             color = if (isTarget) Color.White else Color(0xFF4F46E5),
             radius = pinRadius / 2.2f,
             center = point
+          )
+        }
+
+        // 3. Precision Magnifying Loupe (2.5x Zoom Lens with Crosshair)
+        if (activeDragIndex in 0..3) {
+          val activeScreenPoint = cornerPoints[activeDragIndex]
+          val activeBmpPoint = when (activeDragIndex) {
+            0 -> currentCorners.topLeft
+            1 -> currentCorners.topRight
+            2 -> currentCorners.bottomRight
+            else -> currentCorners.bottomLeft
+          }
+
+          val loupeRadius = 52.dp.toPx()
+          // Position loupe offset from finger so user's thumb does not obscure it
+          val loupeCenter = if (activeScreenPoint.y < size.height * 0.38f) {
+            Offset(
+              activeScreenPoint.x.coerceIn(loupeRadius + 16f, size.width - loupeRadius - 16f),
+              activeScreenPoint.y + loupeRadius + 54.dp.toPx()
+            )
+          } else {
+            Offset(
+              activeScreenPoint.x.coerceIn(loupeRadius + 16f, size.width - loupeRadius - 16f),
+              activeScreenPoint.y - loupeRadius - 54.dp.toPx()
+            )
+          }
+
+          val zoomFactor = 2.4f
+          val loupeClipPath = Path().apply {
+            addOval(androidx.compose.ui.geometry.Rect(
+              loupeCenter.x - loupeRadius,
+              loupeCenter.y - loupeRadius,
+              loupeCenter.x + loupeRadius,
+              loupeCenter.y + loupeRadius
+            ))
+          }
+
+          // Drop shadow for loupe
+          drawCircle(
+            color = Color.Black.copy(alpha = 0.5f),
+            radius = loupeRadius + 4.dp.toPx(),
+            center = loupeCenter + Offset(0f, 3.dp.toPx())
+          )
+
+          clipPath(loupeClipPath) {
+            drawRect(color = Color(0xFF1E293B))
+
+            val magBmpWidth = bmpWidth * scale * zoomFactor
+            val magBmpHeight = bmpHeight * scale * zoomFactor
+            val magDstX = loupeCenter.x - (activeBmpPoint.x * scale * zoomFactor)
+            val magDstY = loupeCenter.y - (activeBmpPoint.y * scale * zoomFactor)
+
+            drawImage(
+              image = bmpImage,
+              dstOffset = androidx.compose.ui.unit.IntOffset(magDstX.toInt(), magDstY.toInt()),
+              dstSize = androidx.compose.ui.unit.IntSize(magBmpWidth.toInt(), magBmpHeight.toInt())
+            )
+
+            // Red precision crosshair
+            val crosshairLen = 18.dp.toPx()
+            drawLine(
+              color = Color(0xFFEF4444),
+              start = Offset(loupeCenter.x - crosshairLen, loupeCenter.y),
+              end = Offset(loupeCenter.x + crosshairLen, loupeCenter.y),
+              strokeWidth = 2.dp.toPx()
+            )
+            drawLine(
+              color = Color(0xFFEF4444),
+              start = Offset(loupeCenter.x, loupeCenter.y - crosshairLen),
+              end = Offset(loupeCenter.x, loupeCenter.y + crosshairLen),
+              strokeWidth = 2.dp.toPx()
+            )
+            drawCircle(
+              color = Color(0xFFEF4444),
+              radius = 2.5.dp.toPx(),
+              center = loupeCenter
+            )
+          }
+
+          // Outer loupe border ring
+          drawCircle(
+            color = Color.White,
+            radius = loupeRadius,
+            center = loupeCenter,
+            style = Stroke(width = 3.dp.toPx())
+          )
+          drawCircle(
+            color = Color(0xFF6366F1),
+            radius = loupeRadius + 1.dp.toPx(),
+            center = loupeCenter,
+            style = Stroke(width = 1.dp.toPx())
           )
         }
       }

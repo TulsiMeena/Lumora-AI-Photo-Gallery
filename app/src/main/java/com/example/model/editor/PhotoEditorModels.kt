@@ -15,8 +15,36 @@ enum class CropAspectRatio(val displayName: String, val ratio: Float?) {
   RATIO_4_3("4:3", 4f / 3f),
   RATIO_16_9("16:9", 16f / 9f),
   RATIO_9_16("9:16", 9f / 16f),
-  CUSTOM("Custom", null)
+  CUSTOM("Custom", null);
+
+  fun calculateCropBounds(imageWidth: Float = 1f, imageHeight: Float = 1f): CropBounds {
+    val targetRatio = this.ratio
+    if (targetRatio == null || targetRatio <= 0f) {
+      return CropBounds(0f, 0f, 1f, 1f)
+    }
+    val imgRatio = if (imageHeight > 0f) imageWidth / imageHeight else 1f
+    return if (imgRatio > targetRatio) {
+      // Image is wider than target: fit height, reduce width symmetrically
+      val normalizedW = (imageHeight * targetRatio) / imageWidth
+      val left = ((1f - normalizedW) / 2f).coerceIn(0f, 0.45f)
+      val right = (left + normalizedW).coerceIn(left + 0.1f, 1f)
+      CropBounds(cropLeft = left, cropTop = 0f, cropRight = right, cropBottom = 1f)
+    } else {
+      // Image is taller than target: fit width, reduce height symmetrically
+      val normalizedH = (imageWidth / targetRatio) / imageHeight
+      val top = ((1f - normalizedH) / 2f).coerceIn(0f, 0.45f)
+      val bottom = (top + normalizedH).coerceIn(top + 0.1f, 1f)
+      CropBounds(cropLeft = 0f, cropTop = top, cropRight = 1f, cropBottom = bottom)
+    }
+  }
 }
+
+data class CropBounds(
+  val cropLeft: Float,
+  val cropTop: Float,
+  val cropRight: Float,
+  val cropBottom: Float
+)
 
 /**
  * Crop and Geometry Transformation State

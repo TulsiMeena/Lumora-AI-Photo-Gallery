@@ -50,7 +50,6 @@ fun EditorTopBar(
   onRedo: () -> Unit,
   onCompareHold: (Boolean) -> Unit,
   onCompareModeCycle: () -> Unit,
-  onOpenAiEditor: (() -> Unit)? = null,
   onSaveExport: () -> Unit,
   onClose: () -> Unit,
   modifier: Modifier = Modifier
@@ -155,20 +154,6 @@ fun EditorTopBar(
 
       // Actions group
       Row(verticalAlignment = Alignment.CenterVertically) {
-        if (onOpenAiEditor != null) {
-          IconButton(
-            onClick = onOpenAiEditor,
-            modifier = Modifier.testTag("btn_editor_open_ai")
-          ) {
-            Icon(
-              imageVector = Icons.Rounded.AutoAwesome,
-              contentDescription = "Gemini AI Studio",
-              tint = Color(0xFF38BDF8)
-            )
-          }
-          Spacer(modifier = Modifier.width(4.dp))
-        }
-
         // Save / Export button
         Button(
           onClick = onSaveExport,

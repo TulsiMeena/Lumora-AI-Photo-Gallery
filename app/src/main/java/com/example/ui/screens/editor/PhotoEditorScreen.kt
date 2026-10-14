@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.example.data.editor.PhotoEditorEngine
 import com.example.model.editor.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -27,7 +28,6 @@ fun PhotoEditorScreen(
   initialStateJson: String? = null,
   onSaveExport: (Uri, String, PhotoEditorState) -> Unit,
   onSaveProject: (PhotoEditorState) -> Unit,
-  onOpenAiEditor: ((Uri, String) -> Unit)? = null,
   onClose: () -> Unit,
   modifier: Modifier = Modifier
 ) {
@@ -35,6 +35,7 @@ fun PhotoEditorScreen(
   val scope = rememberCoroutineScope()
 
   var originalBitmap by remember { mutableStateOf<Bitmap?>(null) }
+  var previewBaseBitmap by remember { mutableStateOf<Bitmap?>(null) }
   var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
   var isLoadingImage by remember { mutableStateOf(true) }
   var isExporting by remember { mutableStateOf(false) }
@@ -53,6 +54,7 @@ fun PhotoEditorScreen(
 
   val undoStack = remember { mutableStateListOf<PhotoEditorState>() }
   val redoStack = remember { mutableStateListOf<PhotoEditorState>() }
+  var lastCommittedState by remember { mutableStateOf(editorState) }
 
   // Retouch radius & Drawing controls
   var retouchRadius by remember { mutableFloatStateOf(30f) }
@@ -60,20 +62,44 @@ fun PhotoEditorScreen(
   var drawingStrokeWidth by remember { mutableFloatStateOf(10f) }
   var activeStrokePoints by remember { mutableStateOf<List<DrawingPoint>>(emptyList()) }
 
-  // Push state snapshot to undo stack
-  val pushState: (PhotoEditorState) -> Unit = { newState ->
-    undoStack.add(editorState)
-    redoStack.clear()
+  // Push distinct state snapshot to undo stack (capped at 30 to prevent memory pressure)
+  val pushStateSnapshot: (PhotoEditorState) -> Unit = { newState ->
+    if (editorState != newState) {
+      if (undoStack.size >= 30) {
+        undoStack.removeAt(0)
+      }
+      undoStack.add(editorState)
+      redoStack.clear()
+      lastCommittedState = newState
+      editorState = newState
+    }
+  }
+
+  // Live slider change without clogging undo stack during continuous drag:
+  val updateStateLive: (PhotoEditorState) -> Unit = { newState ->
     editorState = newState
   }
 
-  // Load Bitmap on entry
+  // Debounced history snapshot for slider changes (captures final slider position)
+  LaunchedEffect(editorState) {
+    delay(400)
+    if (editorState != lastCommittedState) {
+      if (undoStack.size >= 30) {
+        undoStack.removeAt(0)
+      }
+      undoStack.add(lastCommittedState)
+      redoStack.clear()
+      lastCommittedState = editorState
+    }
+  }
+
+  // Load Bitmap on entry with fast downsampled preview base for 120fps editing
   LaunchedEffect(sourceUri) {
     isLoadingImage = true
     withContext(Dispatchers.IO) {
       val fullBitmap = PhotoEditorEngine.loadBitmap(context, sourceUri, maxDimension = 2048)
       val smallPreview = fullBitmap?.let {
-        val maxPre = 1080
+        val maxPre = 960
         if (it.width > maxPre || it.height > maxPre) {
           val s = if (it.width > it.height) maxPre.toFloat() / it.width else maxPre.toFloat() / it.height
           Bitmap.createScaledBitmap(it, (it.width * s).toInt(), (it.height * s).toInt(), true)
@@ -83,8 +109,39 @@ fun PhotoEditorScreen(
       }
       withContext(Dispatchers.Main) {
         originalBitmap = fullBitmap
+        previewBaseBitmap = smallPreview
         previewBitmap = smallPreview
         isLoadingImage = false
+      }
+    }
+  }
+
+  // Smooth background rendering for heavy non-ColorMatrix adjustments (Curves, HSL, Retouch, Detail, Vignette)
+  LaunchedEffect(
+    editorState.curvesAdjustment,
+    editorState.hslAdjustments,
+    editorState.detailAdjustments,
+    editorState.vignetteEffects,
+    editorState.retouchItems,
+    previewBaseBitmap
+  ) {
+    val base = previewBaseBitmap ?: return@LaunchedEffect
+    val hasComplexFilters = !editorState.curvesAdjustment.isDefault ||
+        !editorState.hslAdjustments.isDefault ||
+        !editorState.detailAdjustments.isDefault ||
+        !editorState.vignetteEffects.isDefault ||
+        editorState.retouchItems.isNotEmpty()
+
+    if (!hasComplexFilters) {
+      previewBitmap = base
+      return@LaunchedEffect
+    }
+
+    delay(100) // 100ms debounce ensures zero lag while interacting
+    withContext(Dispatchers.Default) {
+      val processed = PhotoEditorEngine.processImage(base, editorState)
+      withContext(Dispatchers.Main) {
+        previewBitmap = processed
       }
     }
   }
@@ -111,7 +168,7 @@ fun PhotoEditorScreen(
       }
     } else {
       Column(modifier = Modifier.fillMaxSize()) {
-        // 1. Top Bar
+        // 1. Top Bar with Undo / Redo / Compare / Export
         EditorTopBar(
           title = editorState.title,
           canUndo = undoStack.isNotEmpty(),
@@ -121,6 +178,7 @@ fun PhotoEditorScreen(
             if (undoStack.isNotEmpty()) {
               val prev = undoStack.removeAt(undoStack.lastIndex)
               redoStack.add(editorState)
+              lastCommittedState = prev
               editorState = prev
             }
           },
@@ -128,6 +186,7 @@ fun PhotoEditorScreen(
             if (redoStack.isNotEmpty()) {
               val next = redoStack.removeAt(redoStack.lastIndex)
               undoStack.add(editorState)
+              lastCommittedState = next
               editorState = next
             }
           },
@@ -144,9 +203,6 @@ fun PhotoEditorScreen(
             }
             editorState = editorState.copy(compareMode = nextMode)
           },
-          onOpenAiEditor = {
-            onOpenAiEditor?.invoke(sourceUri, title)
-          },
           onSaveExport = { showExportDialog = true },
           onClose = {
             if (editorState.hasModifications) {
@@ -156,7 +212,7 @@ fun PhotoEditorScreen(
           }
         )
 
-        // 2. Interactive Editing Canvas
+        // 2. Interactive Ultra-Smooth Editing Canvas
         Box(
           modifier = Modifier
             .weight(1f)
@@ -166,7 +222,10 @@ fun PhotoEditorScreen(
             originalBitmap = originalBitmap,
             previewBitmap = previewBitmap,
             state = editorState,
-            onUpdateState = { pushState(it) },
+            activeStrokePoints = activeStrokePoints,
+            activeStrokeColor = drawingColor,
+            activeStrokeWidth = drawingStrokeWidth,
+            onUpdateState = updateStateLive,
             onAddDrawingPoint = { nx, ny ->
               activeStrokePoints = activeStrokePoints + DrawingPoint(nx, ny)
             },
@@ -177,7 +236,7 @@ fun PhotoEditorScreen(
                   colorHex = drawingColor,
                   strokeWidth = drawingStrokeWidth
                 )
-                pushState(editorState.copy(drawingStrokes = editorState.drawingStrokes + newStroke))
+                pushStateSnapshot(editorState.copy(drawingStrokes = editorState.drawingStrokes + newStroke))
               }
               activeStrokePoints = emptyList()
             },
@@ -189,7 +248,7 @@ fun PhotoEditorScreen(
                 sourceY = (ny - 0.05f).coerceIn(0f, 1f),
                 radius = retouchRadius
               )
-              pushState(editorState.copy(retouchItems = editorState.retouchItems + newItem))
+              pushStateSnapshot(editorState.copy(retouchItems = editorState.retouchItems + newItem))
             },
             onMoveSelectedText = { id, nx, ny ->
               val updated = editorState.textLayers.map {
@@ -212,11 +271,11 @@ fun PhotoEditorScreen(
           onSelectCategory = { cat ->
             editorState = editorState.copy(activeCategory = cat)
           },
-          onUpdateState = { pushState(it) },
+          onUpdateState = updateStateLive,
           retouchRadius = retouchRadius,
           onRetouchRadiusChange = { retouchRadius = it },
           onClearRetouch = {
-            pushState(editorState.copy(retouchItems = emptyList()))
+            pushStateSnapshot(editorState.copy(retouchItems = emptyList()))
           },
           drawingColor = drawingColor,
           drawingStrokeWidth = drawingStrokeWidth,
@@ -224,38 +283,39 @@ fun PhotoEditorScreen(
           onDrawingStrokeWidthChange = { drawingStrokeWidth = it },
           onUndoDrawingStroke = {
             if (editorState.drawingStrokes.isNotEmpty()) {
-              pushState(editorState.copy(drawingStrokes = editorState.drawingStrokes.dropLast(1)))
+              pushStateSnapshot(editorState.copy(drawingStrokes = editorState.drawingStrokes.dropLast(1)))
             }
           },
           onClearDrawing = {
-            pushState(editorState.copy(drawingStrokes = emptyList()))
+            pushStateSnapshot(editorState.copy(drawingStrokes = emptyList()))
           },
           canUndoDrawing = editorState.drawingStrokes.isNotEmpty(),
           onAddShape = { shapeType ->
             val newShape = ShapeStickerItem(type = shapeType)
-            pushState(editorState.copy(shapes = editorState.shapes + newShape))
+            pushStateSnapshot(editorState.copy(shapes = editorState.shapes + newShape))
           },
           onAddSticker = { emoji ->
             val newSticker = ShapeStickerItem(type = EditorShapeType.STICKER, stickerSymbol = emoji)
-            pushState(editorState.copy(shapes = editorState.shapes + newSticker))
+            pushStateSnapshot(editorState.copy(shapes = editorState.shapes + newSticker))
           },
           onClearShapes = {
-            pushState(editorState.copy(shapes = emptyList()))
+            pushStateSnapshot(editorState.copy(shapes = emptyList()))
           },
           onAddText = { text ->
             val newText = TextLayerItem(text = text)
-            pushState(editorState.copy(textLayers = editorState.textLayers + newText))
+            pushStateSnapshot(editorState.copy(textLayers = editorState.textLayers + newText))
           },
           onDeleteText = { id ->
-            pushState(editorState.copy(textLayers = editorState.textLayers.filterNot { it.id == id }))
+            pushStateSnapshot(editorState.copy(textLayers = editorState.textLayers.filterNot { it.id == id }))
           },
           onAddPrivacyRegion = { type ->
             val newRegion = BlurMosaicRegion(type = type)
-            pushState(editorState.copy(blurMosaicRegions = editorState.blurMosaicRegions + newRegion))
+            pushStateSnapshot(editorState.copy(blurMosaicRegions = editorState.blurMosaicRegions + newRegion))
           },
           onClearPrivacyRegions = {
-            pushState(editorState.copy(blurMosaicRegions = emptyList()))
-          }
+            pushStateSnapshot(editorState.copy(blurMosaicRegions = emptyList()))
+          },
+          imageAspectRatio = previewBitmap?.let { it.width.toFloat() / it.height.toFloat() } ?: 1f
         )
       }
     }

@@ -58,6 +58,7 @@ fun EditorBottomBar(
   onDeleteText: (String) -> Unit,
   onAddPrivacyRegion: (BlurMosaicType) -> Unit,
   onClearPrivacyRegions: () -> Unit,
+  imageAspectRatio: Float = 1f,
   modifier: Modifier = Modifier
 ) {
   val toolTabs = listOf(
@@ -97,6 +98,7 @@ fun EditorBottomBar(
           EditorCategory.CROP -> {
             CropTransformPanel(
               crop = state.cropTransform,
+              imageAspectRatio = imageAspectRatio,
               onCropChange = { onUpdateState(state.copy(cropTransform = it)) },
               onResetCrop = { onUpdateState(state.copy(cropTransform = CropTransform())) }
             )

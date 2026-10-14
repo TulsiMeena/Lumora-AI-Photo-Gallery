@@ -86,7 +86,6 @@ import com.example.ui.screens.pdf.PdfStudioHomeScreen
 import com.example.ui.screens.pdf.PdfSuccessSheet
 import com.example.ui.screens.editor.PhotoEditorScreen
 import com.example.ui.screens.editor.EditingProjectsSheet
-import com.example.ui.screens.ai.editor.AiPhotoEditorScreen
 import com.example.ui.screens.ai.understanding.AiImageUnderstandingScreen
 import com.example.model.ai.understanding.ImageUnderstandingTask
 import com.example.ui.screens.resize.ImageResizeScreen
@@ -191,8 +190,6 @@ fun GalleryApp(
       BackHandler { viewModel.closeImageCompressor() }
     } else if (uiState.isImageResizeOpen) {
       BackHandler { viewModel.closeImageResize() }
-    } else if (uiState.activeAiEditorMedia != null || uiState.activeAiEditorUri != null) {
-      BackHandler { viewModel.closeAiPhotoEditor() }
     } else if (uiState.activeEditorMedia != null) {
       BackHandler { viewModel.closeEditor() }
     } else if (uiState.isPdfPreviewOpen) {
@@ -226,7 +223,6 @@ fun GalleryApp(
             !uiState.isScannerOpen && uiState.openedDocument == null && uiState.openedOcrResult == null &&
             !uiState.isPdfStudioOpen && !uiState.isPdfCreatorOpen && !uiState.isPdfPreviewOpen &&
             uiState.activeEditorMedia == null &&
-            uiState.activeAiEditorMedia == null && uiState.activeAiEditorUri == null &&
             uiState.activeAiUnderstandingMedia == null && uiState.activeAiUnderstandingUri == null &&
             !uiState.isImageResizeOpen && !uiState.isImageCompressorOpen &&
             !uiState.isCreativeStudioOpen && !uiState.isShareCenterOpen
@@ -327,7 +323,7 @@ fun GalleryApp(
                     val singleSelected = uiState.photos.find { uiState.selectedPhotoIds.contains(it.id) }
                     if (singleSelected != null) {
                       viewModel.toggleSelectionMode()
-                      viewModel.openAiPhotoEditor(singleSelected)
+                      viewModel.openEditor(singleSelected)
                     }
                   },
                   onShowSelectionDetails = { viewModel.showSelectionSummary() },
@@ -391,10 +387,10 @@ fun GalleryApp(
                   onPhotoClick = { photo -> viewModel.openPhoto(photo) },
                   onOpenAiEditor = {
                     val candidate = uiState.attachedMediaForAi ?: uiState.photos.firstOrNull()
-                    viewModel.openAiPhotoEditor(candidate)
+                    if (candidate != null) viewModel.openEditor(candidate)
                   },
                   onOpenAiEditorWithMedia = { item ->
-                    viewModel.openAiPhotoEditor(item)
+                    viewModel.openEditor(item)
                   },
                   onOpenVisualAnalysis = {
                     viewModel.navigateTo(GalleryNavDestination.HOME)
@@ -410,7 +406,8 @@ fun GalleryApp(
                   onOpenCompressor = { item, tab ->
                     val candidate = item ?: uiState.attachedMediaForAi ?: uiState.photos.firstOrNull()
                     viewModel.openImageCompressor(media = candidate, initialTab = tab)
-                  }
+                  },
+                  modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
                 )
               }
 
@@ -481,7 +478,7 @@ fun GalleryApp(
                   onRenameAlbum = { id, name -> viewModel.renameVaultAlbum(id, name) },
                   onDeleteAlbum = { viewModel.deleteVaultAlbum(it) },
                   onOpenInAiEdit = { bitmap ->
-                    viewModel.handOffAiImageToProEditor(bitmap, "Vault_Edit")
+                    viewModel.openBitmapInProEditor(bitmap, "Vault_Edit")
                   },
                   onOpenInAiChat = { bitmap ->
                     viewModel.openAiImageUnderstanding(prompt = "Analyze this private vault photo", isFromVault = true)
@@ -499,7 +496,6 @@ fun GalleryApp(
             !uiState.isScannerOpen && uiState.openedDocument == null && uiState.openedOcrResult == null &&
             !uiState.isPdfStudioOpen && !uiState.isPdfCreatorOpen && !uiState.isPdfPreviewOpen &&
             uiState.activeEditorMedia == null &&
-            uiState.activeAiEditorMedia == null && uiState.activeAiEditorUri == null &&
             uiState.activeAiUnderstandingMedia == null && uiState.activeAiUnderstandingUri == null &&
             !uiState.isImageResizeOpen && !uiState.isImageCompressorOpen &&
             !uiState.isCreativeStudioOpen && !uiState.isShareCenterOpen &&
@@ -575,10 +571,6 @@ fun GalleryApp(
             onOpenPhotoEditor = { item ->
               viewModel.closePhoto()
               viewModel.openEditor(item)
-            },
-            onOpenAiPhotoEditor = { item ->
-              viewModel.closePhoto()
-              viewModel.openAiPhotoEditor(item)
             },
             onOpenAiUnderstanding = { item, task ->
               viewModel.closePhoto()
@@ -943,10 +935,6 @@ fun GalleryApp(
             onSaveProject = { state ->
               viewModel.saveEditingProject(state)
             },
-            onOpenAiEditor = { uri, title ->
-              viewModel.closeEditor()
-              viewModel.openAiPhotoEditor(uri = uri.toString(), title = title)
-            },
             onClose = { viewModel.closeEditor() }
           )
         }
@@ -974,38 +962,7 @@ fun GalleryApp(
         )
       }
 
-      // 15. Full-screen Gemini Online AI Photo Editor Overlay
-      AnimatedVisibility(
-        visible = uiState.activeAiEditorMedia != null || uiState.activeAiEditorUri != null,
-        enter = fadeIn(animationSpec = tween(220)) + slideInVertically(initialOffsetY = { it / 6 }),
-        exit = fadeOut(animationSpec = tween(220)) + slideOutVertically(targetOffsetY = { it / 6 })
-      ) {
-        val uriStr = uiState.activeAiEditorUri ?: uiState.activeAiEditorMedia?.uri
-        if (uriStr != null) {
-          AiPhotoEditorScreen(
-            sourceUri = Uri.parse(uriStr),
-            mediaTitle = uiState.activeAiEditorTitle ?: uiState.activeAiEditorMedia?.title ?: "Photo",
-            userApiKey = uiState.settings.geminiApiKey,
-            askBeforeSendingToAi = uiState.settings.askBeforeSendingToAi,
-            initialPrompt = uiState.activeAiEditorInitialPrompt,
-            onSaveExport = { bmp, title ->
-              viewModel.onAiPhotoEditorExported(bmp, title)
-            },
-            onOpenInProEditor = { bmp, title ->
-              viewModel.handOffAiImageToProEditor(bmp, title)
-            },
-            onUpdateAskBeforeSendingPreference = { ask ->
-              viewModel.updateAskBeforeSendingToAiPreference(ask)
-            },
-            onSaveApiKey = { key ->
-              viewModel.saveGeminiApiKey(key)
-            },
-            onClose = { viewModel.closeAiPhotoEditor() }
-          )
-        }
-      }
-
-      // 16. Full-screen Advanced AI Image Understanding & Chat Workspace
+      // 15. Full-screen Advanced AI Image Understanding & Chat Workspace
       AnimatedVisibility(
         visible = uiState.activeAiUnderstandingMedia != null || uiState.activeAiUnderstandingUri != null,
         enter = fadeIn(animationSpec = tween(220)) + slideInVertically(initialOffsetY = { it / 6 }),

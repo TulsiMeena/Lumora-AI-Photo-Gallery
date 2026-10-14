@@ -179,12 +179,6 @@ data class GalleryUiState(
   val showEditingProjectsSheet: Boolean = false,
   val editorSuccessNotice: String? = null,
 
-  // Gemini Online AI Photo Editor State
-  val activeAiEditorMedia: MediaItem? = null,
-  val activeAiEditorUri: String? = null,
-  val activeAiEditorTitle: String? = null,
-  val activeAiEditorInitialPrompt: String? = null,
-
   // Advanced AI Image Understanding & Chat State
   val activeAiUnderstandingMedia: MediaItem? = null,
   val activeAiUnderstandingUri: String? = null,
@@ -1301,9 +1295,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
       QuickAction.AiEdit -> {
         val candidate = _uiState.value.photos.firstOrNull { it.mediaType == MediaType.PHOTO }
         if (candidate != null) {
-          openAiPhotoEditor(candidate)
+          openEditor(candidate)
         } else {
-          showUserNotice("Select a photo from the gallery to open AI Photo Editor")
+          showUserNotice("Select a photo from the gallery to open Photo Editor")
         }
       }
       QuickAction.CreativeStudio -> openCreativeStudio(com.example.model.creative.CreativeStudioTab.ALL)
@@ -2474,98 +2468,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     _uiState.update { it.copy(editorSuccessNotice = null) }
   }
 
-  // ==========================================
-  // ONLINE GEMINI AI PHOTO EDITOR
-  // ==========================================
-
-  fun openAiPhotoEditor(
-    media: MediaItem? = null,
-    uri: String? = null,
-    title: String? = null,
-    initialPrompt: String? = null
-  ) {
-    val targetMedia = media ?: _uiState.value.photos.firstOrNull { it.mediaType == MediaType.PHOTO }
-    val targetUri = uri ?: targetMedia?.uri
-    if (targetMedia != null || targetUri != null) {
-      _uiState.update {
-        it.copy(
-          activeAiEditorMedia = targetMedia,
-          activeAiEditorUri = targetUri,
-          activeAiEditorTitle = title ?: targetMedia?.title ?: "Photo",
-          activeAiEditorInitialPrompt = initialPrompt,
-          isQuickActionExpanded = false
-        )
-      }
-    } else {
-      showUserNotice("Select a photo from gallery to open AI Photo Editor")
-    }
-  }
-
-  fun closeAiPhotoEditor() {
-    _uiState.update {
-      it.copy(
-        activeAiEditorMedia = null,
-        activeAiEditorUri = null,
-        activeAiEditorTitle = null,
-        activeAiEditorInitialPrompt = null
-      )
-    }
-  }
-
-  fun onAiPhotoEditorExported(bitmap: Bitmap, title: String) {
-    viewModelScope.launch {
-      val (savedUri, _) = PhotoEditorEngine.saveBitmapDirect(
-        context = getApplication(),
-        bitmap = bitmap,
-        title = title
-      )
-
-      if (savedUri != null) {
-        val mediaId = UUID.randomUUID().toString()
-        val dateTakenMillis = System.currentTimeMillis()
-        val dateTaken = SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(dateTakenMillis))
-        val newMedia = MediaItem(
-          id = mediaId,
-          uri = savedUri.toString(),
-          title = title,
-          dateTaken = dateTaken,
-          dateTakenMillis = dateTakenMillis,
-          mediaType = MediaType.PHOTO,
-          albumName = "AI Edits",
-          isEdited = true,
-          width = bitmap.width,
-          height = bitmap.height,
-          categoryTag = "AI Edit"
-        )
-
-        val originalId = _uiState.value.activeAiEditorMedia?.id ?: mediaId
-        val originalUri = _uiState.value.activeAiEditorMedia?.uri ?: savedUri.toString()
-        repository.recordEdit(
-          originalMediaId = originalId,
-          originalUri = originalUri,
-          editedUri = savedUri.toString(),
-          editType = "Gemini AI Studio",
-          colorSeed = 77
-        )
-
-        _uiState.update { current ->
-          current.copy(
-            allRawPhotos = listOf(newMedia) + current.allRawPhotos,
-            activeAiEditorMedia = null,
-            activeAiEditorUri = null,
-            activeAiEditorTitle = null,
-            activeAiEditorInitialPrompt = null,
-            editorSuccessNotice = "AI Photo saved successfully to Pictures/MyGalleryAI"
-          )
-        }
-        reloadMedia()
-      } else {
-        _uiState.update { it.copy(userNotice = "Failed to export AI photo.") }
-      }
-    }
-  }
-
-  fun handOffAiImageToProEditor(bitmap: Bitmap, title: String) {
+  fun openBitmapInProEditor(bitmap: Bitmap, title: String) {
     viewModelScope.launch {
       val (savedUri, _) = PhotoEditorEngine.saveBitmapDirect(
         context = getApplication(),
@@ -2580,17 +2483,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
           dateTaken = "Today",
           dateTakenMillis = System.currentTimeMillis(),
           mediaType = MediaType.PHOTO,
-          albumName = "AI Edits"
+          albumName = "Edited"
         )
         _uiState.update {
           it.copy(
-            activeAiEditorMedia = null,
-            activeAiEditorUri = null,
-            activeAiEditorTitle = null,
-            activeAiEditorInitialPrompt = null,
             activeEditorMedia = tempMedia,
             activeEditorProject = null,
-            userNotice = "Opened AI generated image in Professional Editor"
+            userNotice = "Opened image in Professional Editor"
           )
         }
       }

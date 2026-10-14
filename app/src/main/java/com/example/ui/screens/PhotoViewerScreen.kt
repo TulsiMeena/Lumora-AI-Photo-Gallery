@@ -98,7 +98,6 @@ fun PhotoViewerScreen(
   onScanAsDoc: (MediaItem) -> Unit = {},
   onCreatePdf: ((MediaItem) -> Unit)? = null,
   onOpenPhotoEditor: ((MediaItem) -> Unit)? = null,
-  onOpenAiPhotoEditor: ((MediaItem) -> Unit)? = null,
   onOpenAiUnderstanding: ((MediaItem, ImageUnderstandingTask) -> Unit)? = null,
   onOpenImageResize: ((MediaItem) -> Unit)? = null,
   onOpenPassportStudio: ((MediaItem) -> Unit)? = null,
@@ -383,16 +382,6 @@ fun PhotoViewerScreen(
                   }
                 )
                 DropdownMenuItem(
-                  text = { Text("Gemini AI Photo Editor") },
-                  leadingIcon = {
-                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color(0xFF38BDF8))
-                  },
-                  onClick = {
-                    showMoreMenu = false
-                    onOpenAiPhotoEditor?.invoke(photo)
-                  }
-                )
-                DropdownMenuItem(
                   text = { Text("Ask AI Assistant") },
                   leadingIcon = {
                     Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = colors.accent)
@@ -545,15 +534,11 @@ fun PhotoViewerScreen(
             }
           )
           ViewerBottomAction(
-            title = "AI Edit",
+            title = "Ask AI",
             icon = Icons.Rounded.AutoAwesome,
-            accentTint = Color(0xFF38BDF8),
+            accentTint = colors.accent,
             onClick = {
-              if (onOpenAiPhotoEditor != null) {
-                onOpenAiPhotoEditor(photo)
-              } else {
-                onAiAction(photo)
-              }
+              onAiAction(photo)
             }
           )
           ViewerBottomAction(

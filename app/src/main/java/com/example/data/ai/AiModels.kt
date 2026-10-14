@@ -29,6 +29,9 @@ data class ParsedAiQuery(
   val orientation: OrientationFilter = OrientationFilter.ALL,
   val targetAlbum: String? = null,
   val semanticKeywords: List<String> = emptyList(),
+  val primarySubject: String? = null,
+  val primaryColor: String? = null,
+  val exactCompoundPhrase: String? = null,
   val sortOption: SortOption? = null,
   val isCountQuery: Boolean = false,
   val isImageQuestion: Boolean = false

@@ -53,12 +53,87 @@ data class QuadCorners(
         bottomLeft = PointF(0f, height)
       )
     }
+
+    /**
+     * Blazing fast on-device paper boundary auto-detection
+     */
+    fun autoDetect(bitmap: Bitmap): QuadCorners {
+      val w = bitmap.width.toFloat()
+      val h = bitmap.height.toFloat()
+      if (w < 100 || h < 100) return defaultFromSize(w, h, 0.05f)
+
+      val sampleW = 200
+      val sampleH = 200
+      val scaled = try {
+        Bitmap.createScaledBitmap(bitmap, sampleW, sampleH, false)
+      } catch (e: Exception) {
+        return defaultFromSize(w, h, 0.05f)
+      }
+
+      val pixels = IntArray(sampleW * sampleH)
+      scaled.getPixels(pixels, 0, sampleW, 0, 0, sampleW, sampleH)
+      if (scaled != bitmap) scaled.recycle()
+
+      fun lumAt(x: Int, y: Int): Int {
+        val px = pixels[(y.coerceIn(0, sampleH - 1)) * sampleW + (x.coerceIn(0, sampleW - 1))]
+        return (Color.red(px) * 299 + Color.green(px) * 587 + Color.blue(px) * 114) / 1000
+      }
+
+      val centerLum = lumAt(sampleW / 2, sampleH / 2)
+      var tlX = (sampleW * 0.04f).toInt(); var tlY = (sampleH * 0.04f).toInt()
+      var trX = (sampleW * 0.96f).toInt(); var trY = (sampleH * 0.04f).toInt()
+      var brX = (sampleW * 0.96f).toInt(); var brY = (sampleH * 0.96f).toInt()
+      var blX = (sampleW * 0.04f).toInt(); var blY = (sampleH * 0.96f).toInt()
+
+      val maxSteps = 40
+      for (step in 4 until maxSteps) {
+        val curX = step
+        val curY = step
+        if (Math.abs(lumAt(curX, curY) - centerLum) < 45) {
+          tlX = curX; tlY = curY
+          break
+        }
+      }
+      for (step in 4 until maxSteps) {
+        val curX = sampleW - 1 - step
+        val curY = step
+        if (Math.abs(lumAt(curX, curY) - centerLum) < 45) {
+          trX = curX; trY = curY
+          break
+        }
+      }
+      for (step in 4 until maxSteps) {
+        val curX = sampleW - 1 - step
+        val curY = sampleH - 1 - step
+        if (Math.abs(lumAt(curX, curY) - centerLum) < 45) {
+          brX = curX; brY = curY
+          break
+        }
+      }
+      for (step in 4 until maxSteps) {
+        val curX = step
+        val curY = sampleH - 1 - step
+        if (Math.abs(lumAt(curX, curY) - centerLum) < 45) {
+          blX = curX; blY = curY
+          break
+        }
+      }
+
+      val normTL = PointF((tlX.toFloat() / sampleW) * w, (tlY.toFloat() / sampleH) * h)
+      val normTR = PointF((trX.toFloat() / sampleW) * w, (trY.toFloat() / sampleH) * h)
+      val normBR = PointF((brX.toFloat() / sampleW) * w, (brY.toFloat() / sampleH) * h)
+      val normBL = PointF((blX.toFloat() / sampleW) * w, (blY.toFloat() / sampleH) * h)
+
+      return QuadCorners(normTL, normTR, normBR, normBL)
+    }
   }
 }
 
 enum class DocumentFilterType(val displayName: String) {
   ORIGINAL("Original"),
   COLOR_SCAN("Color Scan"),
+  MAGIC_COLOR("Magic Color"),
+  CLEAN_WHITE("Clean White"),
   GRAYSCALE("Grayscale"),
   BLACK_AND_WHITE("Black & White"),
   AUTO_ENHANCE("Auto Enhance")
@@ -150,6 +225,38 @@ object ScanImageProcessor {
           0f, 0f, 1.15f * settings.contrast, 0f, settings.brightness + 18f,
           0f, 0f, 0f, 1f, 0f
         ))
+        paint.colorFilter = ColorMatrixColorFilter(cm)
+        canvas.drawBitmap(working, 0f, 0f, paint)
+      }
+
+      DocumentFilterType.MAGIC_COLOR -> {
+        // Vibrant contrast and saturation boost for color stamps, ID cards, and official badges
+        val cm = ColorMatrix()
+        cm.set(floatArrayOf(
+          1.22f * settings.contrast, 0f, 0f, 0f, settings.brightness + 24f,
+          0f, 1.22f * settings.contrast, 0f, 0f, settings.brightness + 24f,
+          0f, 0f, 1.22f * settings.contrast, 0f, settings.brightness + 24f,
+          0f, 0f, 0f, 1f, 0f
+        ))
+        val satCm = ColorMatrix()
+        satCm.setSaturation(1.3f)
+        cm.postConcat(satCm)
+        paint.colorFilter = ColorMatrixColorFilter(cm)
+        canvas.drawBitmap(working, 0f, 0f, paint)
+      }
+
+      DocumentFilterType.CLEAN_WHITE -> {
+        // High-key white paper removal of background shadows and yellowing
+        val cm = ColorMatrix()
+        cm.set(floatArrayOf(
+          1.32f * settings.contrast, 0f, 0f, 0f, settings.brightness + 30f,
+          0f, 1.32f * settings.contrast, 0f, 0f, settings.brightness + 30f,
+          0f, 0f, 1.32f * settings.contrast, 0f, settings.brightness + 30f,
+          0f, 0f, 0f, 1f, 0f
+        ))
+        val satCm = ColorMatrix()
+        satCm.setSaturation(0.65f) // Gently desaturate warm paper tint
+        cm.postConcat(satCm)
         paint.colorFilter = ColorMatrixColorFilter(cm)
         canvas.drawBitmap(working, 0f, 0f, paint)
       }

@@ -127,8 +127,8 @@ object LocalAiSearchEngine {
       badges.add(RecognizedFilterBadge("Concept: $kw", "sparkles", "semantic"))
     }
 
-    // Filter media items
-    val filtered = allMedia.filter { item ->
+    // Filter and score media items based on relevance
+    val scoredItems = allMedia.mapNotNull { item ->
       val itemCal = Calendar.getInstance().apply {
         timeInMillis = if (item.dateTakenMillis > 0L) item.dateTakenMillis else System.currentTimeMillis()
       }
@@ -140,19 +140,19 @@ object LocalAiSearchEngine {
       // 1. Date Range
       when (parsed.dateRange) {
         DateRangeFilter.TODAY -> {
-          if (itemYear != todayYear || itemDay != todayDay) return@filter false
+          if (itemYear != todayYear || itemDay != todayDay) return@mapNotNull null
         }
         DateRangeFilter.YESTERDAY -> {
-          if (itemYear != yestYear || itemDay != yestDay) return@filter false
+          if (itemYear != yestYear || itemDay != yestDay) return@mapNotNull null
         }
         DateRangeFilter.THIS_WEEK -> {
-          if (itemYear != todayYear || itemWeek != thisWeek) return@filter false
+          if (itemYear != todayYear || itemWeek != thisWeek) return@mapNotNull null
         }
         DateRangeFilter.THIS_MONTH -> {
-          if (itemYear != todayYear || itemMonth != thisMonth) return@filter false
+          if (itemYear != todayYear || itemMonth != thisMonth) return@mapNotNull null
         }
         DateRangeFilter.THIS_YEAR -> {
-          if (itemYear != todayYear) return@filter false
+          if (itemYear != todayYear) return@mapNotNull null
         }
         DateRangeFilter.ALL -> {}
       }
@@ -162,31 +162,31 @@ object LocalAiSearchEngine {
         val matchesMonthIndex = itemMonth == parsed.specificMonth
         val matchesMonthText = item.dateTaken.contains("Sep", ignoreCase = true) ||
           item.dateTaken.contains(parsed.specificMonthName ?: "", ignoreCase = true)
-        if (!matchesMonthIndex && !matchesMonthText) return@filter false
+        if (!matchesMonthIndex && !matchesMonthText) return@mapNotNull null
       }
 
       // Specific Year
       if (parsed.specificYear != null) {
         val matchesYear = itemYear == parsed.specificYear || item.dateTaken.contains(parsed.specificYear.toString())
-        if (!matchesYear) return@filter false
+        if (!matchesYear) return@mapNotNull null
       }
 
       // 2. Media Type
       when (parsed.mediaType) {
-        MediaTypeFilter.PHOTOS -> if (item.mediaType != MediaType.PHOTO) return@filter false
-        MediaTypeFilter.VIDEOS -> if (item.mediaType != MediaType.VIDEO) return@filter false
+        MediaTypeFilter.PHOTOS -> if (item.mediaType != MediaType.PHOTO) return@mapNotNull null
+        MediaTypeFilter.VIDEOS -> if (item.mediaType != MediaType.VIDEO) return@mapNotNull null
         MediaTypeFilter.ALL -> {}
       }
 
       // 3. Favorites
-      if (parsed.onlyFavorites && !item.isFavorite) return@filter false
+      if (parsed.onlyFavorites && !item.isFavorite) return@mapNotNull null
 
       // 4. Edited
       if (parsed.onlyEdited) {
         val isEdited = item.isEdited ||
           item.title.contains("edit", ignoreCase = true) ||
           item.albumName.contains("edit", ignoreCase = true)
-        if (!isEdited) return@filter false
+        if (!isEdited) return@mapNotNull null
       }
 
       // 5. Screenshots
@@ -194,7 +194,7 @@ object LocalAiSearchEngine {
         val isScr = item.albumName.contains("screenshot", ignoreCase = true) ||
           item.title.contains("screenshot", ignoreCase = true) ||
           item.categoryTag.equals("Screenshot", ignoreCase = true)
-        if (!isScr) return@filter false
+        if (!isScr) return@mapNotNull null
       }
 
       // 6. Documents
@@ -207,65 +207,125 @@ object LocalAiSearchEngine {
           item.title.contains("receipt", ignoreCase = true) ||
           item.title.contains("card", ignoreCase = true) ||
           item.semanticTags.any { it.contains("aadhaar", ignoreCase = true) || it.contains("document", ignoreCase = true) }
-        if (!isDoc) return@filter false
+        if (!isDoc) return@mapNotNull null
       }
 
       // 7. Large / Small file size
-      if (parsed.onlyLargeFiles && item.sizeBytes < 5 * 1024 * 1024L) return@filter false
-      if (parsed.onlySmallFiles && item.sizeBytes >= 1 * 1024 * 1024L) return@filter false
+      if (parsed.onlyLargeFiles && item.sizeBytes < 5 * 1024 * 1024L) return@mapNotNull null
+      if (parsed.onlySmallFiles && item.sizeBytes >= 1 * 1024 * 1024L) return@mapNotNull null
 
       // 8. Orientation
       when (parsed.orientation) {
-        OrientationFilter.PORTRAIT -> if (item.height <= item.width) return@filter false
-        OrientationFilter.LANDSCAPE -> if (item.width <= item.height) return@filter false
+        OrientationFilter.PORTRAIT -> if (item.height <= item.width) return@mapNotNull null
+        OrientationFilter.LANDSCAPE -> if (item.width <= item.height) return@mapNotNull null
         OrientationFilter.ALL -> {}
       }
 
       // 9. Target Album
       if (parsed.targetAlbum != null) {
         val matchesAlbum = item.albumName.contains(parsed.targetAlbum, ignoreCase = true)
-        if (!matchesAlbum) return@filter false
+        if (!matchesAlbum) return@mapNotNull null
       }
 
-      // 10. Semantic Keywords (Objects, Colors, Scenes, Tags)
-      if (parsed.semanticKeywords.isNotEmpty()) {
-        val searchableText = buildString {
-          append(item.title).append(" ")
-          append(item.categoryTag).append(" ")
-          append(item.albumName).append(" ")
-          append(item.locationName).append(" ")
-          append(item.dominantColor).append(" ")
-          append(item.detectedText).append(" ")
-          item.semanticTags.forEach { append(it).append(" ") }
-          item.detectedObjects.forEach { append(it).append(" ") }
-        }.lowercase(Locale.getDefault())
+      // 10. Semantic Keywords & Intelligent Relevance Scoring
+      val searchableText = buildString {
+        append(item.title).append(" ")
+        append(item.categoryTag).append(" ")
+        append(item.albumName).append(" ")
+        append(item.locationName).append(" ")
+        append(item.dominantColor).append(" ")
+        append(item.detectedText).append(" ")
+        item.semanticTags.forEach { append(it).append(" ") }
+        item.detectedObjects.forEach { append(it).append(" ") }
+      }.lowercase(Locale.getDefault())
 
-        val matchesAnyKeyword = parsed.semanticKeywords.any { kw ->
+      var relevanceScore = 10.0
+
+      if (parsed.semanticKeywords.isNotEmpty()) {
+        val matchedKeywords = parsed.semanticKeywords.filter { kw ->
           searchableText.contains(kw)
         }
-        if (!matchesAnyKeyword) return@filter false
+        if (matchedKeywords.isEmpty()) {
+          return@mapNotNull null
+        }
+
+        // Subject check: If a primary subject (e.g. "shirt", "tshirt", "car", "flower", "beach") was requested,
+        // items without that subject should NOT outrank or be returned as false positives.
+        if (parsed.primarySubject != null) {
+          val hasSubject = searchableText.contains(parsed.primarySubject) ||
+            (parsed.primarySubject == "shirt" && (searchableText.contains("shirt") || searchableText.contains("tshirt") || searchableText.contains("t-shirt") || searchableText.contains("tee"))) ||
+            item.title.contains("shirt", ignoreCase = true)
+          if (!hasSubject) {
+            return@mapNotNull null
+          }
+          relevanceScore += 200.0
+        }
+
+        // Exact compound phrase match (e.g., "red shirt", "red tshirt", "aadhaar card", "hawa mahal")
+        if (parsed.exactCompoundPhrase != null) {
+          val hasCompound = searchableText.contains(parsed.exactCompoundPhrase) ||
+            item.title.contains(parsed.exactCompoundPhrase, ignoreCase = true) ||
+            item.semanticTags.any { it.contains(parsed.exactCompoundPhrase, ignoreCase = true) } ||
+            item.detectedObjects.any { it.contains(parsed.exactCompoundPhrase, ignoreCase = true) }
+          if (hasCompound) {
+            relevanceScore += 350.0
+          }
+        }
+
+        // Primary color check
+        if (parsed.primaryColor != null) {
+          val hasColor = item.dominantColor.contains(parsed.primaryColor, ignoreCase = true) ||
+            searchableText.contains(parsed.primaryColor)
+          if (hasColor) {
+            relevanceScore += 100.0
+            if (item.dominantColor.equals(parsed.primaryColor, ignoreCase = true)) {
+              relevanceScore += 60.0
+            }
+          }
+        }
+
+        // Keyword matches count
+        relevanceScore += matchedKeywords.size * 50.0
+
+        // Title match bonus
+        parsed.semanticKeywords.forEach { kw ->
+          if (item.title.contains(kw, ignoreCase = true)) relevanceScore += 80.0
+          if (item.detectedObjects.any { it.contains(kw, ignoreCase = true) }) relevanceScore += 60.0
+        }
       }
 
-      true
+      // Small date bonus for tie-breaking
+      relevanceScore += (item.dateTakenMillis.toDouble() / 1e13)
+
+      item to relevanceScore
     }
 
-    // Sort results
-    val sortOption = parsed.sortOption ?: SortOption.NEWEST_FIRST
-    val sorted = when (sortOption) {
-      SortOption.NEWEST_FIRST -> filtered.sortedByDescending { it.dateTakenMillis }
-      SortOption.OLDEST_FIRST -> filtered.sortedBy { it.dateTakenMillis }
-      SortOption.LARGEST_FILE -> filtered.sortedByDescending { it.sizeBytes }
-      SortOption.SMALLEST_FILE -> filtered.sortedBy { it.sizeBytes }
-      SortOption.NAME_AZ -> filtered.sortedBy { it.title.lowercase(Locale.getDefault()) }
-      SortOption.NAME_ZA -> filtered.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
-      SortOption.RECENTLY_MODIFIED -> filtered.sortedByDescending { it.dateTakenMillis }
+    // Sort results by relevance score (or user explicit sort)
+    val sorted = if (parsed.sortOption != null) {
+      when (parsed.sortOption) {
+        SortOption.NEWEST_FIRST -> scoredItems.map { it.first }.sortedByDescending { it.dateTakenMillis }
+        SortOption.OLDEST_FIRST -> scoredItems.map { it.first }.sortedBy { it.dateTakenMillis }
+        SortOption.LARGEST_FILE -> scoredItems.map { it.first }.sortedByDescending { it.sizeBytes }
+        SortOption.SMALLEST_FILE -> scoredItems.map { it.first }.sortedBy { it.sizeBytes }
+        SortOption.NAME_AZ -> scoredItems.map { it.first }.sortedBy { it.title.lowercase(Locale.getDefault()) }
+        SortOption.NAME_ZA -> scoredItems.map { it.first }.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
+        SortOption.RECENTLY_MODIFIED -> scoredItems.map { it.first }.sortedByDescending { it.dateTakenMillis }
+      }
+    } else {
+      // Default: Highest relevance score first!
+      scoredItems.sortedByDescending { it.second }.map { it.first }
     }
 
     val photosCount = sorted.count { it.mediaType == MediaType.PHOTO }
     val videosCount = sorted.count { it.mediaType == MediaType.VIDEO }
+    val topItem = sorted.firstOrNull()
 
     val explanation = if (sorted.isEmpty()) {
       "No matching photos found for '${parsed.originalQuery}'. You can try searching another date, searching albums, or using a broader query."
+    } else if (parsed.exactCompoundPhrase != null && topItem != null) {
+      "Found '${topItem.title}' matching ${parsed.exactCompoundPhrase} apparel! (Total $photosCount matching)"
+    } else if (parsed.primarySubject != null && parsed.primaryColor != null && topItem != null) {
+      "Found '${topItem.title}' matching ${parsed.primaryColor} color and ${parsed.primarySubject}. (Total $photosCount matching)"
     } else {
       val breakdown = if (photosCount > 0 && videosCount > 0) {
         "$photosCount photos and $videosCount videos"

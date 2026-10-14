@@ -35,6 +35,10 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.Check
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
@@ -249,6 +253,21 @@ fun DocumentViewerScreen(
                 onClick = {
                   menuExpanded = false
                   showCategoryDialog = true
+                }
+              )
+              DropdownMenuItem(
+                text = { Text("Copy OCR Text") },
+                leadingIcon = { Icon(Icons.Rounded.ContentCopy, contentDescription = null) },
+                onClick = {
+                  menuExpanded = false
+                  val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                  if (clipboard != null && document.ocrText.isNotBlank()) {
+                    val clip = ClipData.newPlainText("Document OCR", document.ocrText)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(context, "OCR text copied to clipboard", Toast.LENGTH_SHORT).show()
+                  } else {
+                    Toast.makeText(context, "No OCR text available to copy", Toast.LENGTH_SHORT).show()
+                  }
                 }
               )
               DropdownMenuItem(

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -469,9 +470,9 @@ fun AiScreen(
                 modifier = Modifier.weight(1f)
               )
               AiToolCard(
-                title = "AI Photo Editor",
-                subtitle = "Magic Eraser, Generative Fill & Unblur",
-                badge = "Ready",
+                title = "Pro Photo Editor",
+                subtitle = "Curves, HSL, Retouch, Filters & Crop",
+                badge = "Pro",
                 icon = Icons.Rounded.AutoFixHigh,
                 accentColor = colors.accent,
                 onClick = onOpenAiEditor,
@@ -657,14 +658,14 @@ fun AiScreen(
                   verticalAlignment = Alignment.CenterVertically
                 ) {
                   Icon(
-                    imageVector = Icons.Rounded.AutoAwesome,
+                    imageVector = Icons.Rounded.AutoFixHigh,
                     contentDescription = null,
                     tint = colors.accent,
                     modifier = Modifier.size(13.dp)
                   )
                   Spacer(modifier = Modifier.width(4.dp))
                   Text(
-                    text = "AI Edit",
+                    text = "Edit Photo",
                     color = colors.accent,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
@@ -693,7 +694,7 @@ fun AiScreen(
     Surface(
       modifier = Modifier
         .fillMaxWidth()
-        .navigationBarsPadding(),
+        .imePadding(),
       color = colors.surface,
       tonalElevation = 6.dp
     ) {

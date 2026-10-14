@@ -170,41 +170,117 @@ object LocalAiQueryParser {
       sortOption = SortOption.LARGEST_FILE
     }
 
-    // 8. Semantic keywords (extracted concepts, colors, objects, scenes)
+    // 8. Semantic keywords, primary subjects, and colors
     val semanticKeywords = mutableListOf<String>()
+    var primarySubject: String? = null
+    var primaryColor: String? = null
+    var exactCompoundPhrase: String? = null
 
     // Colors
-    if (lower.contains("red") || lower.contains("लाल")) semanticKeywords.add("red")
-    if (lower.contains("blue") || lower.contains("नीला") || lower.contains("नीली")) semanticKeywords.add("blue")
-    if (lower.contains("green") || lower.contains("हरा") || lower.contains("हरी")) semanticKeywords.add("green")
-    if (lower.contains("golden") || lower.contains("सुनहरा") || lower.contains("सुनहरी")) semanticKeywords.add("golden")
+    when {
+      lower.contains("red") || lower.contains("लाल") -> {
+        primaryColor = "red"
+        semanticKeywords.add("red")
+      }
+      lower.contains("blue") || lower.contains("नीला") || lower.contains("नीली") -> {
+        primaryColor = "blue"
+        semanticKeywords.add("blue")
+      }
+      lower.contains("green") || lower.contains("हरा") || lower.contains("हरी") -> {
+        primaryColor = "green"
+        semanticKeywords.add("green")
+      }
+      lower.contains("golden") || lower.contains("सुनहरा") || lower.contains("सुनहरी") -> {
+        primaryColor = "golden"
+        semanticKeywords.add("golden")
+      }
+      lower.contains("black") || lower.contains("काला") || lower.contains("काली") -> {
+        primaryColor = "black"
+        semanticKeywords.add("black")
+      }
+      lower.contains("white") || lower.contains("सफ़ेद") || lower.contains("सफेद") -> {
+        primaryColor = "white"
+        semanticKeywords.add("white")
+      }
+    }
 
     // Objects & Apparel
-    if (lower.contains("shirt") || lower.contains("शर्ट")) semanticKeywords.add("shirt")
-    if (lower.contains("car") || lower.contains("गाड़ी")) semanticKeywords.add("car")
-    if (lower.contains("coffee") || lower.contains("कॉफ़ी")) semanticKeywords.add("coffee")
-    if (lower.contains("flower") || lower.contains("फूल")) semanticKeywords.add("flower")
+    val isApparel = lower.contains("shirt") || lower.contains("tshirt") || lower.contains("t-shirt") ||
+      lower.contains("t shirt") || lower.contains("tee") || lower.contains("शर्ट") || lower.contains("t-shirts") ||
+      lower.contains("kurta") || lower.contains("dress") || lower.contains("कपड़े")
 
-    // Scenes & Places
-    if (lower.contains("beach") || lower.contains("समुद्र") || lower.contains("बीच") || lower.contains("coast")) semanticKeywords.add("beach")
-    if (lower.contains("mountain") || lower.contains("पहाड़") || lower.contains("valley")) semanticKeywords.add("mountain")
-    if (lower.contains("sunset") || lower.contains("सनसेट") || lower.contains("सूर्यास्त")) semanticKeywords.add("sunset")
-    if (lower.contains("night") || lower.contains("star") || lower.contains("stars") || lower.contains("आकाश")) semanticKeywords.add("night")
-    if (lower.contains("forest") || lower.contains("जंगल")) semanticKeywords.add("forest")
-    if (lower.contains("desert") || lower.contains("रेगिस्तान") || lower.contains("dunes")) semanticKeywords.add("desert")
+    if (isApparel) {
+      primarySubject = "shirt"
+      semanticKeywords.add("shirt")
+      if (lower.contains("tshirt") || lower.contains("t-shirt") || lower.contains("t shirt") || lower.contains("tee")) {
+        semanticKeywords.add("tshirt")
+      }
+    } else if (lower.contains("car") || lower.contains("गाड़ी")) {
+      primarySubject = "car"
+      semanticKeywords.add("car")
+    } else if (lower.contains("coffee") || lower.contains("कॉफ़ी") || lower.contains("chai") || lower.contains("cup")) {
+      primarySubject = "coffee"
+      semanticKeywords.add("coffee")
+    } else if (lower.contains("flower") || lower.contains("flowers") || lower.contains("फूल") || lower.contains("blooms")) {
+      primarySubject = "flower"
+      semanticKeywords.add("flower")
+    } else if (lower.contains("beach") || lower.contains("समुद्र") || lower.contains("बीच") || lower.contains("coast")) {
+      primarySubject = "beach"
+      semanticKeywords.add("beach")
+    } else if (lower.contains("mountain") || lower.contains("पहाड़") || lower.contains("valley") || lower.contains("hills")) {
+      primarySubject = "mountain"
+      semanticKeywords.add("mountain")
+    } else if (lower.contains("sunset") || lower.contains("सनसेट") || lower.contains("सूर्यास्त")) {
+      primarySubject = "sunset"
+      semanticKeywords.add("sunset")
+    } else if (lower.contains("night") || lower.contains("star") || lower.contains("stars") || lower.contains("आकाश")) {
+      primarySubject = "night"
+      semanticKeywords.add("night")
+    } else if (lower.contains("forest") || lower.contains("जंगल") || lower.contains("trees")) {
+      primarySubject = "forest"
+      semanticKeywords.add("forest")
+    } else if (lower.contains("desert") || lower.contains("रेगिस्तान") || lower.contains("dunes") || lower.contains("sand")) {
+      primarySubject = "desert"
+      semanticKeywords.add("desert")
+    } else if (lower.contains("leaf") || lower.contains("leaves") || lower.contains("पत्ता") || lower.contains("macro")) {
+      primarySubject = "leaf"
+      semanticKeywords.add("leaf")
+    } else if (lower.contains("river") || lower.contains("नदी")) {
+      primarySubject = "river"
+      semanticKeywords.add("river")
+    }
 
     // Specific identities & documents
-    if (lower.contains("aadhaar") || lower.contains("आधार")) semanticKeywords.add("aadhaar")
-    if (lower.contains("passport") || lower.contains("पासपोर्ट")) semanticKeywords.add("passport")
-    if (lower.contains("hawa mahal") || lower.contains("हवा महल")) semanticKeywords.add("hawa mahal")
-    if (lower.contains("studio") || lower.contains("स्टूडियो")) semanticKeywords.add("studio")
+    if (lower.contains("aadhaar") || lower.contains("आधार")) {
+      primarySubject = "aadhaar"
+      exactCompoundPhrase = "aadhaar card"
+      semanticKeywords.add("aadhaar")
+    }
+    if (lower.contains("passport") || lower.contains("पासपोर्ट")) {
+      primarySubject = "passport"
+      semanticKeywords.add("passport")
+    }
+    if (lower.contains("hawa mahal") || lower.contains("हवा महल")) {
+      primarySubject = "hawa mahal"
+      exactCompoundPhrase = "hawa mahal"
+      semanticKeywords.add("hawa mahal")
+    }
+    if (lower.contains("studio") || lower.contains("स्टूडियो")) {
+      semanticKeywords.add("studio")
+    }
+
+    // Check specific compound match: Red Shirt / Red T-shirt
+    if ((primaryColor == "red") && isApparel) {
+      exactCompoundPhrase = "red shirt"
+    }
 
     // Add general words if no specific semantic keyword recognized yet
     if (semanticKeywords.isEmpty() && !isCountQuery && !isImageQuestion) {
       val ignored = setOf(
         "show", "me", "find", "photos", "photo", "videos", "video", "my", "all", "the", "in", "of", "from",
         "दिखाओ", "दिखाइए", "खोजो", "ढूंढो", "मेरी", "मेरे", "की", "के", "वाली", "वाले", "का", "हैं", "है",
-        "tell", "how", "many", "give", "list"
+        "tell", "how", "many", "give", "list", "bala", "wali", "wala", "wale", "bali", "bho", "woh", "wo",
+        "do", "chahiye", "search", "batao", "colour", "color", "rang", "wali", "photo do"
       )
       val tokens = lower.split(Regex("""[\s,?.!]+""")).filter { it.isNotBlank() && !ignored.contains(it) }
       semanticKeywords.addAll(tokens.take(3))
@@ -226,6 +302,9 @@ object LocalAiQueryParser {
       orientation = orientation,
       targetAlbum = targetAlbum,
       semanticKeywords = semanticKeywords,
+      primarySubject = primarySubject,
+      primaryColor = primaryColor,
+      exactCompoundPhrase = exactCompoundPhrase,
       sortOption = sortOption,
       isCountQuery = isCountQuery,
       isImageQuestion = isImageQuestion

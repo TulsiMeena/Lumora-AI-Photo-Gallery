@@ -107,6 +107,7 @@ fun EditorSlider(
 @Composable
 fun CropTransformPanel(
   crop: CropTransform,
+  imageAspectRatio: Float = 1f,
   onCropChange: (CropTransform) -> Unit,
   onResetCrop: () -> Unit
 ) {
@@ -136,7 +137,14 @@ fun CropTransformPanel(
         FilterChip(
           selected = isSelected,
           onClick = {
-            onCropChange(crop.copy(aspectRatio = ratio))
+            val bounds = ratio.calculateCropBounds(imageAspectRatio, 1f)
+            onCropChange(crop.copy(
+              aspectRatio = ratio,
+              cropLeft = bounds.cropLeft,
+              cropTop = bounds.cropTop,
+              cropRight = bounds.cropRight,
+              cropBottom = bounds.cropBottom
+            ))
           },
           label = { Text(ratio.displayName, fontSize = 12.sp) },
           colors = FilterChipDefaults.filterChipColors(
