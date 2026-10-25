@@ -21,11 +21,13 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -87,6 +89,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ai.AiChatMessage
@@ -127,6 +130,7 @@ fun AiScreen(
   onOpenAiUnderstanding: ((MediaItem?, ImageUnderstandingTask) -> Unit)? = null,
   onOpenImageResize: ((MediaItem?, Int) -> Unit)? = null,
   onOpenCompressor: ((MediaItem?, Int) -> Unit)? = null,
+  bottomBarPadding: Dp = 0.dp,
   modifier: Modifier = Modifier
 ) {
   val colors = GalleryTheme.colors
@@ -137,6 +141,10 @@ fun AiScreen(
   var currentInput by remember { mutableStateOf("") }
   var showHistorySheet by remember { mutableStateOf(false) }
   var showAttachPickerSheet by remember { mutableStateOf(false) }
+
+  val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+  val effectiveBottomPadding = maxOf(imeBottom, bottomBarPadding)
+  val isKeyboardOpen = imeBottom > bottomBarPadding
 
   // Speech Recognition Activity Launcher
   val speechLauncher = rememberLauncherForActivityResult(
@@ -163,10 +171,11 @@ fun AiScreen(
     }
   }
 
-  // Auto-scroll to bottom when new messages arrive
-  LaunchedEffect(chatMessages.size, isAiSearching) {
+  // Auto-scroll to bottom when new messages arrive or when keyboard opens
+  LaunchedEffect(chatMessages.size, isAiSearching, isKeyboardOpen) {
     if (chatMessages.isNotEmpty()) {
-      listState.animateScrollToItem(chatMessages.size)
+      val targetIndex = (chatMessages.size - 1 + if (isAiSearching) 1 else 0).coerceAtLeast(0)
+      listState.animateScrollToItem(targetIndex)
     }
   }
 
@@ -174,6 +183,7 @@ fun AiScreen(
     modifier = modifier
       .fillMaxSize()
       .background(colors.background)
+      .padding(bottom = effectiveBottomPadding)
   ) {
     // 1. HEADER
     Surface(
@@ -693,8 +703,7 @@ fun AiScreen(
     // 5. BOTTOM DOCKED INPUT BAR
     Surface(
       modifier = Modifier
-        .fillMaxWidth()
-        .imePadding(),
+        .fillMaxWidth(),
       color = colors.surface,
       tonalElevation = 6.dp
     ) {

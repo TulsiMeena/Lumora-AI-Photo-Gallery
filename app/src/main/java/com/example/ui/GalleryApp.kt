@@ -407,7 +407,7 @@ fun GalleryApp(
                     val candidate = item ?: uiState.attachedMediaForAi ?: uiState.photos.firstOrNull()
                     viewModel.openImageCompressor(media = candidate, initialTab = tab)
                   },
-                  modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
+                  bottomBarPadding = innerPadding.calculateBottomPadding()
                 )
               }
 

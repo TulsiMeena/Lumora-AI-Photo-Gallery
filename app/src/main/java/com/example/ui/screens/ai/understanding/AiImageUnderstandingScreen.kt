@@ -754,6 +754,8 @@ fun AiImageUnderstandingScreen(
         }
 
         // 4. BOTTOM INPUT BAR
+        val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+        val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         Surface(
           color = Color(0xFF131722),
           modifier = Modifier.fillMaxWidth()
@@ -761,7 +763,7 @@ fun AiImageUnderstandingScreen(
           Row(
             modifier = Modifier
               .fillMaxWidth()
-              .navigationBarsPadding()
+              .padding(bottom = maxOf(imeBottom, navBottom))
               .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
           ) {
